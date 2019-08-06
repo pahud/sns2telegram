@@ -1,7 +1,5 @@
 import cdk = require("@aws-cdk/core");
 import sam = require('@aws-cdk/aws-sam');
-import lambda = require('@aws-cdk/aws-lambda');
-
 
 class S2TStack extends cdk.Stack {
   public TelegramToken: string;
