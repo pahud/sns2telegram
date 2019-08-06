@@ -1,0 +1,5 @@
+main
+*.zip
+packaged.yaml
+vendor
+gen-sar-icons.sh

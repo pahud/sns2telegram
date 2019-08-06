@@ -1,39 +1,13 @@
-#
-# This is free and unencumbered software released into the public domain.
-#
-# Anyone is free to copy, modify, publish, use, compile, sell, or
-# distribute this software, either in source code form or as a compiled
-# binary, for any purpose, commercial or non-commercial, and by any
-# means.
-#
-# In jurisdictions that recognize copyright laws, the author or authors
-# of this software dedicate any and all copyright interest in the
-# software to the public domain. We make this dedication for the benefit
-# of the public at large and to the detriment of our heirs and
-# successors. We intend this dedication to be an overt act of
-# relinquishment in perpetuity of all present and future rights to this
-# software under copyright law.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-# IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-# OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-# ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-# OTHER DEALINGS IN THE SOFTWARE.
-#
-# For more information, please refer to <http://unlicense.org/>
-#
-
 HANDLER ?= main
 PACKAGE ?= $(HANDLER)
 GOPATH  ?= $(HOME)/go
 GOOS    ?= linux
 GOOSDEV	?= $(shell uname -s)
 GOARCH  ?= amd64
-S3TMPBUCKET	?= pahud-tmp
-
-STACKNAME	?= telegramApiGW
+S3BUCKET	?= pahud-tmp-ap-northeast-1
+STACKNAME	?= sns2telegram
+LAMBDA_REGION ?= ap-northeast-1
+LAMBDA_FUNC_NAME ?= sns2telegram
 
 WORKDIR = $(CURDIR:$(GOPATH)%=/go%)
 ifeq ($(WORKDIR),$(CURDIR))
@@ -47,29 +21,119 @@ dep:
 	@dep ensure
 
 build:
-	@echo "Building..."
-	@GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags='-w -s' -o $(HANDLER)
+ifeq ($(GOOS),darwin)
+	@docker run -ti --rm -v $(shell pwd):/go/src/myapp.github.com -w /go/src/myapp.github.com  golang:1.10 /bin/sh -c "make build-darwin"
+else
+	@docker run -ti --rm -v $(shell pwd):/go/src/myapp.github.com -w /go/src/myapp.github.com  golang:1.10 /bin/sh -c "make build-linux"
+endif
 
-devbuild:
-	@echo "Building..."
-	@GOOS=$(GOOSDEV) GOARCH=$(GOARCH) go build -ldflags='-w -s' -o $(HANDLER)
+run:
+	@docker run -ti --rm -v $(shell pwd):/go/src/myapp.github.com -w /go/src/myapp.github.com  golang:1.10 /bin/sh -c "go run *.go"
 
-pack:
-	@echo "Packing binary..."
-	@zip $(PACKAGE).zip $(HANDLER)
 
-clean:
-	@echo "Cleaning up..."
-	@rm -rf $(HANDLER) $(PACKAGE).zip
+build-linux:
+	@GOOS=linux GOARCH=amd64 go build -o main
+	# @go get -u github.com/golang/dep/cmd/dep
+	# @[ ! -f ./Gopkg.toml ] && dep init || true
+	# @dep ensure
+	# @GOOS=linux GOARCH=amd64 go build -o main
+
+build-darwin:
+	GOOS=darwin GOARCH=amd64 go build -o main
+	# @go get -u github.com/golang/dep/cmd/dep
+	# @[ ! -f ./Gopkg.toml ] && dep init || true
+	# @dep ensure
+	# @GOOS=darwin GOARCH=amd64 go build -o main
+
+
+# build:
+# 	@echo "Building..."
+# 	@GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags='-w -s' -o $(HANDLER)
+
+# devbuild:
+# 	@echo "Building..."
+# 	@GOOS=$(GOOSDEV) GOARCH=$(GOARCH) go build -ldflags='-w -s' -o $(HANDLER)
+
+# pack:
+# 	@echo "Packing binary..."
+# 	@zip $(PACKAGE).zip $(HANDLER)
+
+# clean:
+# 	@echo "Cleaning up..."
+# 	@rm -rf $(HANDLER) $(PACKAGE).zip
 
 package:
 	@echo "sam packaging..."
-	@aws cloudformation package --template-file sam.yaml --s3-bucket $(S3TMPBUCKET) --output-template-file sam-packaged.yaml
+	@aws cloudformation package --template-file sam.yaml --s3-bucket $(S3BUCKET) --output-template-file sam-packaged.yaml
 
 deploy:
 	@echo "sam deploying..."
 	@aws cloudformation deploy --template-file sam-packaged.yaml --stack-name $(STACKNAME) --capabilities CAPABILITY_IAM
 
-world: all deploy
+	
+.PHONY: func-prep	
+func-prep:
+	@rm -f main.zip; zip -r main.zip main
+	
+.PHONY: sam-package
+sam-package:
+	@docker run -ti \
+	-v $(PWD):/home/samcli/workdir \
+	-v $(HOME)/.aws:/home/samcli/.aws \
+	-w /home/samcli/workdir \
+	-e AWS_DEFAULT_REGION=$(LAMBDA_REGION) \
+	pahud/aws-sam-cli:latest sam package --template-file sam.yaml --s3-bucket $(S3BUCKET) --output-template-file packaged.yaml
 
-.PHONY: all dep build pack clean package world
+
+.PHONY: sam-package-from-sar
+sam-package-from-sar:
+	@docker run -ti \
+	-v $(PWD):/home/samcli/workdir \
+	-v $(HOME)/.aws:/home/samcli/.aws \
+	-w /home/samcli/workdir \
+	-e AWS_DEFAULT_REGION=$(LAMBDA_REGION) \
+	pahud/aws-sam-cli:latest sam package --template-file sam-sar.yaml --s3-bucket $(S3BUCKET) --output-template-file packaged.yaml
+
+.PHONY: sam-publish
+sam-publish:
+	@docker run -ti \
+	-v $(PWD):/home/samcli/workdir \
+	-v $(HOME)/.aws:/home/samcli/.aws \
+	-w /home/samcli/workdir \
+	-e AWS_DEFAULT_REGION=$(LAMBDA_REGION) \
+	pahud/aws-sam-cli:latest sam publish --region $(LAMBDA_REGION) --template packaged.yaml
+	
+	
+.PHONY: sam-publish-global
+sam-publish-global:
+	$(foreach LAMBDA_REGION,$(GLOBAL_REGIONS), LAMBDA_REGION=$(LAMBDA_REGION) make sam-publish;)
+
+
+.PHONY: sam-deploy
+sam-deploy:
+	@docker run -ti \
+	-v $(PWD):/home/samcli/workdir \
+	-v $(HOME)/.aws:/home/samcli/.aws \
+	-w /home/samcli/workdir \
+	-e AWS_DEFAULT_REGION=$(LAMBDA_REGION) \
+	pahud/aws-sam-cli:latest sam deploy \
+	--parameter-overrides FunctionName=$(LAMBDA_FUNC_NAME)  \
+	--template-file ./packaged.yaml --stack-name "$(LAMBDA_FUNC_NAME)" --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+	# print the cloudformation stack outputs
+	aws --region $(LAMBDA_REGION) cloudformation describe-stacks --stack-name "$(LAMBDA_FUNC_NAME)" --query 'Stacks[0].Outputs'
+
+
+.PHONY: sam-logs-tail
+sam-logs-tail:
+	@docker run -ti \
+	-v $(PWD):/home/samcli/workdir \
+	-v $(HOME)/.aws:/home/samcli/.aws \
+	-w /home/samcli/workdir \
+	-e AWS_DEFAULT_REGION=$(LAMBDA_REGION) \
+	pahud/aws-sam-cli:latest sam logs --name $(LAMBDA_FUNC_NAME) --tail
+
+.PHONY: sam-destroy
+sam-destroy:
+	# destroy the stack	
+	aws --region $(LAMBDA_REGION) cloudformation delete-stack --stack-name "$(LAMBDA_FUNC_NAME)"
+

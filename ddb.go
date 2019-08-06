@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -15,7 +16,8 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-const tableName = "sns2imTelegram"
+// const tableName = "sns2imTelegram"
+var tableName = os.Getenv("ddb_table_name")
 
 // Item for DynamoDB Item data type
 type Item struct {
@@ -32,7 +34,7 @@ type DynamoDBHandler struct {
 // NewDdbHandler ...
 func NewDdbHandler() (*DynamoDBHandler, error) {
 	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String("ap-northeast-1")},
+		Region: aws.String(os.Getenv("region"))},
 	)
 	if err != nil {
 		log.Println("failed to initializa the DynamoDB Handler")

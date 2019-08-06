@@ -1,7 +1,31 @@
 AWSTemplateFormatVersion: '2010-09-09'
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: sns2telegram
+    Description: "Amazon SNS to Telegram Message Gateway"
+    Author: Pahud Hsieh
+    SpdxLicenseId: Apache-2.0
+    LicenseUrl: LICENSE
+    ReadmeUrl: README.md
+    Labels: ['sns', 'telegram']
+    HomePageUrl: https://github.com/pahud/sns2telegram
+    SemanticVersion: 1.0.2
+    SourceCodeUrl: https://github.com/pahud/sns2telegram
+
 Transform: AWS::Serverless-2016-10-31
-Description: SNS to Telegram message forwarder
-Resources:
+Description: Amazon SNS to Telegram Message Gateway
+Parameters:
+  TableName:
+    Type: String
+    Description: DynamoDB Table Name
+    Default: sns2Telegram
+  TelegramToken:
+    Type: String
+    Description: Telegram Bot Token from botfather
+    Default: placeholder
+
+Resources:        
   SampleFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -9,9 +33,15 @@ Resources:
       CodeUri: main.zip
       Runtime: go1.x
       MemorySize: 128
+      Environment:
+        Variables:
+          base_url: placeholder.com
+          telegram_token: !Ref TelegramToken
+          region: !Ref AWS::Region
+          ddb_table_name: !Ref TableName
       Policies: 
         - AWSLambdaBasicExecutionRole
-        - Version: '2012-10-17' # Policy Document
+        - Version: '2012-10-17'
           Statement:
             - Effect: Allow
               Action:
@@ -25,10 +55,28 @@ Resources:
           Properties:
             Path: /{proxy+}
             Method: any
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+        AttributeDefinitions: 
+          - 
+            AttributeName: "chatId"
+            AttributeType: "S"
+        KeySchema: 
+          - 
+            AttributeName: "chatId"
+            KeyType: "HASH"
+        TableName: sns2Telegram
+        ProvisionedThroughput: 
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
 
 Outputs:
-  SampleGinApi:
-    Description: URL for application
-    Value: !Sub 'https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/ping'
-    Export:
-      Name: SampleGinApi
+  BaseURL:
+    Value: !Sub 'https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/'
+  WebHookURL:
+    Value: !Sub 'https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/telegram/cb'
+  HealthzURL:
+    Value: !Sub 'https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/healthz'
+  DynamoDBTableName:
+    Value: !Ref Table

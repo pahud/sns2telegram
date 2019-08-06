@@ -15,8 +15,7 @@ import (
 
 var tg *Telegram
 
-// change this value with your own HTTPS API domain
-var domainPrefix = "https://sns2im.serverless.im"
+var baseURL string
 
 // request body byte
 var reqbodybyte []byte
@@ -44,9 +43,12 @@ type Req struct {
 }
 
 func init() {
+	telegramToken := os.Getenv("telegram_token")
+
 	tg = NewTelegram()
 	// change this with your Telegram bot token
-	tg.token = "123456789:xxxxxxxxxxxxxxxxxxx"
+	// tg.token = "123456789:xxxxxxxxxxxxxxxxxxx"
+	tg.token = telegramToken
 }
 
 func int32tostr(i int32) string {
@@ -198,7 +200,8 @@ func initHandler(c *gin.Context) {
 		return
 	}
 
-	webhookURL := domainPrefix + "/webhook/" + strChatID + "/" + UUID
+	baseURL := os.Getenv("base_url")
+	webhookURL := baseURL + "/webhook/" + strChatID + "/" + UUID
 	txt2send := "Your webhook endpoint:\n\n" + webhookURL + "\n\n*subscribe your SNS topic with this URL to receive SNS notifications in this chatroom.\n"
 	tg.sendMessage(txt2send, strChatID)
 	c.String(http.StatusOK, txt2send)
@@ -227,6 +230,7 @@ func routerEngine() *gin.Engine {
 	r.Use(gin.Recovery())
 
 	r.GET("/health/ping", pingHandler)
+	r.GET("/healthz", pingHandler)
 	r.POST("/init", initHandler)
 	r.POST("/webhook/:chatID/:UUID", webhookHandler)
 	r.POST("/telegram/cb", telegramCbHandler)
@@ -238,6 +242,11 @@ func routerEngine() *gin.Engine {
 }
 
 func main() {
+	baseURL := os.Getenv("base_url")
+
+	if baseURL == "" {
+		log.Fatal("base_url not found in the environment variables")
+	}
 	var addr string
 	if addr = ":" + os.Getenv("PORT"); addr != ":" {
 		log.Printf("listening on %v", addr)
