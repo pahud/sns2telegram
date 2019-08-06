@@ -1,4 +1,5 @@
 main
+.DS_Store
 *.zip
 packaged.yaml
 vendor

@@ -133,6 +133,35 @@ To clean up this application, just delete the **serverlessrepo-sns2telegram** cl
 
 
 
+# CDK Support
+
+We love AWS CDK! You definitely can provision **sns2telegram** with AWS CDK.
+
+```bash
+# go to cdk directory
+cd cdk
+# deploy to us-east-1
+cdk sync
+cdk deploy -c region=us-east-1 -c telegramToken=YOUR_TELEGRAM_TOKEN
+```
+
+You'll get the Outputs like this:
+
+```
+Outputs:
+sns2telegramCdk.DynamoDBTableName = sns2Telegram
+sns2telegramCdk.WebHookURL = https://2ykcmys6de.execute-api.us-east-1.amazonaws.com/Prod/telegram/cb
+sns2telegramCdk.BaseURL = https://2ykcmys6de.execute-api.us-east-1.amazonaws.com/Prod/
+sns2telegramCdk.HealthzURL = https://2ykcmys6de.execute-api.us-east-1.amazonaws.com/Prod/healthz
+```
+
+```bash
+# destroy the stack
+cdk destroy -c region=us-east-1
+```
+
+
+
 # FAQ
 
 ### Does sns2telegram support cross-region SNS messages?
